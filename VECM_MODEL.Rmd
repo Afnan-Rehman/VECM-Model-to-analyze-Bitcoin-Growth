@@ -1,0 +1,370 @@
+---
+title: "FINAL project Output"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+btc <- read.csv(choose.files())
+```
+
+```{r}
+
+head(btc)
+tail(btc)
+
+```
+*DATE*
+
+```{r}
+
+btc$Date <- as.Date(btc$Date, format = "%d/%m/%Y")
+
+```
+*Summary Statistics*
+```{r}
+variables <- btc[, c("btc_price", "Google_Tre", "FED_Rate", "act_add", "sf", "CPI")] 
+summary(variables)
+```
+*Skewness Check*
+```{r}
+library(e1071)
+skewness <- sapply(btc, function(x) if(is.numeric(x)) skewness(x, na.rm = TRUE) else NA)
+
+print(skewness)
+```
+#btc_price (2.16)
+#FED_Rate (1.57)
+#Google_Tre (4.52)
+
+*Log Transformation*
+
+```{r}
+btc$lbtc_price <- log(btc$btc_price)
+btc$lFED_Rate <- log(btc$FED_Rate)
+btc$lGoogle_Tre <- log(btc$Google_Tre)
+```
+
+
+```{r}
+library(dplyr)
+```
+
+*Multiregression Model Testing without Transformation of Variables:*
+```{r}
+model1 <- lm(btc_price ~ Google_Tre + FED_Rate + act_add + sf + CPI, data = btc)
+summary(model1)
+
+```
+
+
+
+
+*Histogram of return*
+
+```{r}
+attach(btc)
+# histogram of returns
+x <- btc_price
+hist(x, col = 'red', freq= F)
+
+
+curve(dnorm(x, mean=mean(lbtc_price, na.rm=T), sd=sd(lbtc_price, na.rm = T)), 
+      col="darkblue", lwd=1, add=TRUE, yaxt="n")
+```
+
+```{r}
+detach(btc)
+```
+
+
+
+
+```{r}
+
+
+ 
+options(jupyter.plot_scale = 1)
+
+
+plot(as.Date(Date), btc_price, type = 'l', col = "red")
+```
+
+
+```{r}
+plot(as.Date(Date), sf, type = 'l', col = "black")
+```
+
+```{r}
+plot(as.Date(Date), act_add, type = 'l', col = "green")
+```
+
+
+```{r}
+plot(as.Date(Date), CPI, type = 'l', col = "black")
+
+```
+
+
+```{r}
+plot(as.Date(Date), FED_Rate, type = 'l', col = "red")
+
+```
+
+
+```{r}
+plot(as.Date(Date), Google_Tre, type = 'l', col = "black")
+```
+**UNIT ROOT TESTING of RAW DATA**
+
+```{r}
+library(tseries)
+library(urca)
+
+```
+
+* UNIT root with constant lag K=4*
+```{r}
+#ADF TEST
+adf.test(btc_price)
+adf.test(sf)
+adf.test(act_add)
+adf.test(CPI)
+adf.test(FED_Rate)
+adf.test(Google_Tre)
+
+
+# PPtest for Bitcoin price
+pp.test(btc_price)
+
+# PP-test for other variables
+pp.test(sf)
+pp.test(act_add)
+pp.test(CPI)
+pp.test(FED_Rate)
+pp.test(Google_Tre)
+```
+
+
+
+```{r}
+library(vars)
+
+```
+
+*Order of Integration*
+
+```{r}
+# First differencing
+diff_btc_price <- diff(btc_price)
+diff_sf <- diff(sf)
+diff_act_add <- diff(act_add)
+diff_CPI <- diff(CPI)
+diff_FED_Rate <- diff(FED_Rate)
+diff_Google_Tre <- diff(Google_Tre)
+
+```
+
+
+```{r}
+
+
+# ADF test for differenced variables
+adf.test(diff_btc_price)
+adf.test(diff_sf)
+adf.test(diff_act_add)
+adf.test(diff_CPI)
+adf.test(diff_FED_Rate)
+adf.test(diff_Google_Tre)
+
+
+
+
+# ADF test for differenced variables
+pp.test(diff_btc_price)
+pp.test(diff_sf)
+pp.test(diff_act_add)
+pp.test(diff_CPI)
+pp.test(diff_FED_Rate)
+pp.test(diff_Google_Tre)
+```
+*Optimal Lag selection*
+```{r}
+library(vars)
+order_lag <- VARselect(btc[, c("btc_price", "Google_Tre", "FED_Rate", "act_add", "sf", "CPI")], 
+                       lag.max = 4, 
+                       type = "const")
+
+print(order_lag)
+
+```
+
+
+```{r}
+library(urca)
+```
+
+```{r}
+btc_data_matrix <- as.matrix(btc[, c("btc_price", "Google_Tre", "FED_Rate", "act_add", "sf", "CPI")])
+```
+
+*Cointegration Test*
+```{r}
+#for trace
+
+johansen_test <- ca.jo(btc_data_matrix, type = "trace", ecdet = "const", K = 4)
+summary(johansen_test)
+```
+
+
+
+```{r}
+#  Johansen test using the eigenvalue test 
+johansen_test2 <- ca.jo(btc_data_matrix, type = "eigen", ecdet = "const", K = 4)
+summary(johansen_test2)
+beta_matrix <- johansen_test2@V
+
+```
+
+
+
+```{r}
+# Extract the cointegrating vectors (betas)
+cointegrating_vectors <- johansen_test2@V
+print(cointegrating_vectors)
+```
+
+*VECM MODEL*
+
+```{r}
+library(tsDyn)
+vecm_model <- VECM(btc_data_matrix, lag = 3, r = 3, include = "const", estim = "ML")
+summary(vecm_model)
+
+```
+
+
+
+
+
+```{r}
+coefs_all <- summary(vecm_model)$coefMat
+coefs_all[grep("ECT", rownames(coefs_all)),]
+```
+
+```{r}
+# Plot the long-run equilibrium (cointegrating relations)
+plot(cbind(btc_data_matrix[, 1], vecm_model$rlm$beta), main="Cointegrating Relationship")
+
+```
+
+*OLS VECM Representation*
+
+
+```{r}
+
+
+beta_matrix_no_constant <- beta_matrix[-7, ]  
+
+
+dim(beta_matrix_no_constant)
+
+
+ect_terms <- btc_data_matrix %*% beta_matrix_no_constant
+
+
+ECT1 <- ect_terms[, 1]  
+ECT2 <- ect_terms[, 2]  
+ECT3 <- ect_terms[, 3]  
+
+```
+
+
+```{r}
+
+
+btc_diff_data <- diff(btc_data_matrix)
+
+btc_diff_lag1 <- btc_diff_data[-(1:2), ]  
+btc_diff_lag2 <- btc_diff_data[-c(1, nrow(btc_diff_data)), ]  
+btc_diff_lag3 <- btc_diff_data[-c(nrow(btc_diff_data) - 1, nrow(btc_diff_data)), ]  
+
+
+ECT1 <- ECT1[-(1:2)]
+ECT2 <- ECT2[-(1:2)]
+ECT3 <- ECT3[-(1:2)]
+
+
+vecm_data <- data.frame(cbind(btc_diff_lag1, btc_diff_lag2, btc_diff_lag3, ECT1, ECT2, ECT3))
+
+
+colnames(vecm_data) <- c(paste0("diff_", colnames(btc_data_matrix), "_lag1"),
+                         paste0("diff_", colnames(btc_data_matrix), "_lag2"),
+                         paste0("diff_", colnames(btc_data_matrix), "_lag3"),
+                         "ECT1", "ECT2", "ECT3")
+
+
+btc_price_model <- lm(diff_btc_price_lag1 ~ ECT1 + ECT2 + ECT3 +
+                      diff_Google_Tre_lag1 + diff_FED_Rate_lag1 + diff_act_add_lag1 + diff_sf_lag1 + diff_CPI_lag1 +
+                      diff_Google_Tre_lag2 + diff_FED_Rate_lag2 + diff_act_add_lag2 + diff_sf_lag2 + diff_CPI_lag2 +
+                      diff_Google_Tre_lag3 + diff_FED_Rate_lag3 + diff_act_add_lag3 + diff_sf_lag3 + diff_CPI_lag3,
+                      data = vecm_data)
+
+
+summary(btc_price_model)
+
+```
+
+
+```{r}
+
+vecm_residuals <- residuals(btc_price_model)
+
+```
+
+```{r}
+adf.test(btc_price_model$residuals)
+pp.test(btc_price_model$residuals)
+kpss.test(btc_price_model$residuals)
+
+```
+
+
+
+
+```{r}
+library(FinTS)
+
+arch_test_result <- ArchTest(btc_price_model$residuals, lags = 4)  
+print(arch_test_result)
+```
+
+```{r}
+pt_test_result <- Box.test(btc_price_model$residuals, lag = 4, type = "Ljung-Box")
+print(pt_test_result)
+```
+
+```{r}
+library(tseries)
+
+jb_test_result <- jarque.bera.test(btc_price_model$residuals)
+print(jb_test_result)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
